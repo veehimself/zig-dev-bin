@@ -40,16 +40,15 @@ jobs:
           else
             echo "Changes detected, proceeding with build and release"
             echo "changes_detected=true" >> $GITHUB_OUTPUT
-            # Get the new version for later use
-            NEW_VERSION=$(grep -oP 'pkgver=\K[^"]+' PKGBUILD)
-            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            # Store version in a file instead of directly in output
+            grep -oP 'pkgver=\K[^"]+' PKGBUILD > version.txt
           fi
 
       - name: Commit PKGBUILD changes if detected
         if: steps.check_changes.outputs.changes_detected == 'true'
         run: |
           git add PKGBUILD
-          git commit -m "Update Zig version to $(grep -oP 'pkgver=\K[^"]+' PKGBUILD)"
+          git commit -m "Update Zig version to $(cat version.txt)"
           git push
 
       - name: Build package
@@ -75,12 +74,12 @@ jobs:
         if: steps.check_changes.outputs.changes_detected == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          name: "Zig ${{ steps.check_changes.outputs.new_version }}"
+          name: "Zig $(cat version.txt)"
           tag_name: latest
           files: |
             *.pkg.tar.zst
           body: |
-            Automated build of Zig ${{ steps.check_changes.outputs.new_version }}
+            Automated build of Zig $(cat version.txt)
             
             Built on: ${{ github.event.repository.updated_at }}
             Build triggered by: ${{ github.event_name }}
