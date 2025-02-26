@@ -9,60 +9,59 @@ on:
 jobs:
   update-and-release:
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install dependencies
+      - name: Set up Arch Linux environment
+        uses: docker://archlinux:latest
+        with:
+          options: --privileged
+      
+      - name: Install dependencies and build package
         run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm base-devel jq curl git sudo
-
-      - name: Setup git config
-        run: |
+          
+          # Setup git config
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
-
-      - name: Run updater script
-        run: |
+          
+          # Run updater script
           chmod +x ./updater.sh
           ./updater.sh
           
-      - name: Check for version changes
-        id: check_changes
-        run: |
+          # Check for version changes
           if git diff --exit-code PKGBUILD; then
             echo "No changes detected, skipping build and release"
-            echo "changes_detected=false" >> $GITHUB_OUTPUT
+            echo "CHANGES_DETECTED=false" >> $GITHUB_ENV
           else
             echo "Changes detected, proceeding with build and release"
-            echo "changes_detected=true" >> $GITHUB_OUTPUT
-            # Store version in a file instead of directly in output
-            grep -oP 'pkgver=\K[^"]+' PKGBUILD > version.txt
+            echo "CHANGES_DETECTED=true" >> $GITHUB_ENV
+            # Store version for later use
+            VERSION=$(grep -oP 'pkgver=\K[^"]+' PKGBUILD)
+            echo "ZIG_VERSION=$VERSION" >> $GITHUB_ENV
+            
+            # Commit changes
+            git add PKGBUILD
+            git commit -m "Update Zig version to $VERSION"
+            git push
+            
+            # Create a non-root user for makepkg (it refuses to run as root)
+            useradd -m builder || echo "User already exists"
+            chown -R builder:builder .
+            
+            # Run makepkg as the builder user
+            sudo -u builder makepkg -f
           fi
-
-      - name: Commit PKGBUILD changes if detected
-        if: steps.check_changes.outputs.changes_detected == 'true'
-        run: |
-          git add PKGBUILD
-          git commit -m "Update Zig version to $(cat version.txt)"
-          git push
-
-      - name: Build package
-        if: steps.check_changes.outputs.changes_detected == 'true'
-        run: |
-          # Create a non-root user for makepkg (it refuses to run as root)
-          useradd -m builder
-          chown -R builder:builder .
-          
-          # Run makepkg as the builder user
-          sudo -u builder makepkg -f
+        shell: bash
 
       - name: Delete previous release
-        if: steps.check_changes.outputs.changes_detected == 'true'
+        if: env.CHANGES_DETECTED == 'true'
         uses: dev-drprasad/delete-tag-and-release@v0.2.1
         with:
           tag_name: latest
@@ -71,15 +70,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create new release
-        if: steps.check_changes.outputs.changes_detected == 'true'
+        if: env.CHANGES_DETECTED == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          name: "Zig $(cat version.txt)"
+          name: "Zig ${{ env.ZIG_VERSION }}"
           tag_name: latest
           files: |
             *.pkg.tar.zst
           body: |
-            Automated build of Zig $(cat version.txt)
+            Automated build of Zig ${{ env.ZIG_VERSION }}
             
             Built on: ${{ github.event.repository.updated_at }}
             Build triggered by: ${{ github.event_name }}
