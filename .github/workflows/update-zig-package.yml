@@ -1,0 +1,88 @@
+name: Zig Package Update and Release
+
+on:
+  schedule:
+    # Run every 3 days
+    - cron: '0 0 */3 * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  update-and-release:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel jq curl git sudo
+
+      - name: Setup git config
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+
+      - name: Run updater script
+        run: |
+          chmod +x ./updater.sh
+          ./updater.sh
+          
+      - name: Check for version changes
+        id: check_changes
+        run: |
+          if git diff --exit-code PKGBUILD; then
+            echo "No changes detected, skipping build and release"
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected, proceeding with build and release"
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            # Get the new version for later use
+            NEW_VERSION=$(grep -oP 'pkgver=\K[^"]+' PKGBUILD)
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit PKGBUILD changes if detected
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        run: |
+          git add PKGBUILD
+          git commit -m "Update Zig version to $(grep -oP 'pkgver=\K[^"]+' PKGBUILD)"
+          git push
+
+      - name: Build package
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        run: |
+          # Create a non-root user for makepkg (it refuses to run as root)
+          useradd -m builder
+          chown -R builder:builder .
+          
+          # Run makepkg as the builder user
+          sudo -u builder makepkg -f
+
+      - name: Delete previous release
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        uses: dev-drprasad/delete-tag-and-release@v0.2.1
+        with:
+          tag_name: latest
+          delete_release: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create new release
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "Zig ${{ steps.check_changes.outputs.new_version }}"
+          tag_name: latest
+          files: |
+            *.pkg.tar.zst
+          body: |
+            Automated build of Zig ${{ steps.check_changes.outputs.new_version }}
+            
+            Built on: ${{ github.event.repository.updated_at }}
+            Build triggered by: ${{ github.event_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
