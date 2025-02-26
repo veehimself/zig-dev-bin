@@ -17,25 +17,23 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Arch Linux environment
-        uses: docker://archlinux:latest
-        with:
-          options: --privileged
-      
-      - name: Install dependencies and build package
+      - name: Setup git for commits
         run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel jq curl git sudo
-          
-          # Setup git config
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
+
+      - name: Run updater in Docker
+        id: update
+        run: |
+          # Run the updater in an Arch Linux Docker container
+          docker run --rm -v ${{ github.workspace }}:/work -w /work archlinux:latest bash -c "
+            pacman -Syu --noconfirm
+            pacman -S --noconfirm jq curl
+            chmod +x ./updater.sh
+            ./updater.sh
+          "
           
-          # Run updater script
-          chmod +x ./updater.sh
-          ./updater.sh
-          
-          # Check for version changes
+          # Check for changes in PKGBUILD (in the host environment)
           if git diff --exit-code PKGBUILD; then
             echo "No changes detected, skipping build and release"
             echo "CHANGES_DETECTED=false" >> $GITHUB_ENV
@@ -46,19 +44,27 @@ jobs:
             VERSION=$(grep -oP 'pkgver=\K[^"]+' PKGBUILD)
             echo "ZIG_VERSION=$VERSION" >> $GITHUB_ENV
             
-            # Commit changes
+            # Commit the changes
             git add PKGBUILD
             git commit -m "Update Zig version to $VERSION"
             git push
+          fi
+
+      - name: Build package in Docker
+        if: env.CHANGES_DETECTED == 'true'
+        run: |
+          # Run makepkg in an Arch Linux Docker container
+          docker run --rm -v ${{ github.workspace }}:/work -w /work archlinux:latest bash -c "
+            pacman -Syu --noconfirm
+            pacman -S --noconfirm base-devel sudo git
             
             # Create a non-root user for makepkg (it refuses to run as root)
-            useradd -m builder || echo "User already exists"
-            chown -R builder:builder .
+            useradd -m builder
+            chown -R builder:builder /work
             
             # Run makepkg as the builder user
-            sudo -u builder makepkg -f
-          fi
-        shell: bash
+            sudo -u builder bash -c 'cd /work && makepkg -f'
+          "
 
       - name: Delete previous release
         if: env.CHANGES_DETECTED == 'true'
