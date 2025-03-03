@@ -50,10 +50,6 @@ jobs:
           fi
         id: update
 
-      - name: Extract version
-        if: steps.update.outputs.changes_detected == 'true'
-        run: echo "version_string=$(grep -oP 'pkgver=\K[^"]+' PKGBUILD)" >> $GITHUB_ENV
-
       - name: Build package in Docker
         if: steps.update.outputs.changes_detected == 'true'
         run: |
@@ -90,7 +86,7 @@ jobs:
           body: |
             Automated build of Zig package
             
-            Version: ${{ env.version_string }}
+            Version: See PKGBUILD for details
             Built on: ${{ github.event.repository.updated_at }}
             Build triggered by: ${{ github.event_name }}
         env:
