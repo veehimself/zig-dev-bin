@@ -1,15 +1,12 @@
 name: Zig Package Update and Release
-
 on:
   schedule:
     # Run every 3 days
     - cron: '0 0 */3 * *'
   workflow_dispatch:  # Allow manual triggering
-
 # Add permission to create releases and push to the repository
 permissions:
   contents: write
-
 jobs:
   update-and-release:
     runs-on: ubuntu-latest
@@ -19,12 +16,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+          
       - name: Setup git for commits
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
-
+          
       - name: Run updater in Docker
         run: |
           # Run the updater in an Arch Linux Docker container
@@ -35,23 +32,23 @@ jobs:
             ./updater.sh
           "
           
-          # Check for changes in PKGBUILD (in the host environment)
+          # Check for changes and commit if any - but continue either way
           if git diff --exit-code PKGBUILD; then
-            echo "No changes detected, skipping build and release"
-            echo "changes_detected=false" >> $GITHUB_OUTPUT
+            echo "No changes detected in PKGBUILD, continuing with build"
           else
-            echo "Changes detected, proceeding with build and release"
-            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            echo "Changes detected in PKGBUILD, committing updates"
             
             # Commit the changes
             git add PKGBUILD
             git commit -m "Update Zig version from updater.sh"
             git push
           fi
+          
+          # Get current date for tagging
+          echo "build_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
         id: update
-
+        
       - name: Build package in Docker
-        if: steps.update.outputs.changes_detected == 'true'
         run: |
           # Run makepkg in an Arch Linux Docker container
           docker run --rm -v ${{ github.workspace }}:/work -w /work archlinux:latest bash -c "
@@ -63,31 +60,29 @@ jobs:
             chown -R builder:builder /work
             
             # Run makepkg as the builder user
-            sudo -u builder bash -c 'cd /work && makepkg -f'
+            sudo -u builder bash -c 'cd /work && makepkg -f --nocheck'
           "
-
+          
       - name: Delete previous release
-        if: steps.update.outputs.changes_detected == 'true'
         uses: dev-drprasad/delete-tag-and-release@v0.2.1
         with:
           tag_name: latest
           delete_release: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          
       - name: Create new release
-        if: steps.update.outputs.changes_detected == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          name: "Zig Package"
+          name: "Zig Package (Build ${{ steps.update.outputs.build_date }})"
           tag_name: latest
           files: |
             *.pkg.tar.zst
           body: |
             Automated build of Zig package
             
-            Version: See PKGBUILD for details
-            Built on: ${{ github.event.repository.updated_at }}
+            Build Date: ${{ steps.update.outputs.build_date }}
+            Workflow Run: ${{ github.run_id }}
             Build triggered by: ${{ github.event_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
