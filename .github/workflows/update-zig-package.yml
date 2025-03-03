@@ -27,7 +27,7 @@ jobs:
           # Run the updater in an Arch Linux Docker container
           docker run --rm -v ${{ github.workspace }}:/work -w /work archlinux:latest bash -c "
             pacman -Syu --noconfirm
-            pacman -S --noconfirm jq curl
+            pacman -S --noconfirm jq curl minisign ripgrep
             chmod +x ./updater.sh
             ./updater.sh
           "
@@ -53,7 +53,7 @@ jobs:
           # Run makepkg in an Arch Linux Docker container
           docker run --rm -v ${{ github.workspace }}:/work -w /work archlinux:latest bash -c "
             pacman -Syu --noconfirm
-            pacman -S --noconfirm base-devel sudo git
+            pacman -S --noconfirm base-devel sudo git jq minisign ripgrep
             
             # Create a non-root user for makepkg (it refuses to run as root)
             useradd -m builder
