@@ -10,7 +10,6 @@ pkgname=zig-dev-bin
 epoch=1
 # NOTE: Sanitize version '-' -> '_', '+' -> `.g`
 #"version": "0.14.0-dev.829+2e26cf83c",
-# _pkgver=0.14.0
 pkgver=0.14.0
 pkgrel=1
 pkgdesc="A general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software"
@@ -97,13 +96,25 @@ original_pkgver() {
 pkgver() {
     (
         set -o pipefail;
-        # Sanitize `-` to `_`, `+` to `.g`
-        #
-        # So `0.12.0-dev.3429+13a9d94a8` becomes `0.12.0-dev.3429.g13a9d94a8`
-        #
-        # See VCS package guidelines for details:
-        original_pkgver | rg -e '^([\w\.]+)-(dev[\w\.]+)\+(\w+)$' -r '${1}_${2}.g${3}' || {
-            error "Version doesn't match pattern: '$(original_pkgver)'";
+        # Get the original version
+        local origver="$(original_pkgver)"
+        
+        # Check if it's a release version (like 0.14.0)
+        if [[ "$origver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$origver"
+            return 0
+        fi
+        
+        # Check if it's a dev version with the pattern X.X.X-devX.X+XXXXX
+        if [[ "$origver" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-(dev[0-9]+\.[0-9]+)\+([a-f0-9]+)$ ]]; then
+            # Convert 0.14.0-dev.3429+13a9d94a8 to 0.14.0_dev.3429.g13a9d94a8
+            echo "${BASH_REMATCH[1]}_${BASH_REMATCH[2]}.g${BASH_REMATCH[3]}"
+            return 0
+        fi
+        
+        # If nothing else matched, try a more general approach for any version
+        echo "$origver" | sed 's/-/_/g' | sed 's/+/.g/g' || {
+            error "Failed to sanitize version: '$origver'";
             exit 1;
         }
     )
@@ -111,11 +122,11 @@ pkgver() {
 
 prepare() {
     local index_file="$(refresh_version_index)";
-    local newver="$(pkgver)";
+    local origver="$(original_pkgver)";
     pushd "${srcdir}" > /dev/null;
     local newurl="$(jq -r ".master.\"${CARCH}-linux\".tarball" $index_file)";
     local newurl_sig="$newurl.minisig";
-    local newfile="zig-linux-${CARCH}-${newver}.tar.xz";
+    local newfile="zig-linux-${CARCH}-${origver}.tar.xz";
     local newfile_sig="$newfile.minisig";
     # NOTE: The Arch Build System unfortunately doesn't handle dynamically added sources.
     # source+=("${newfile}:${newurl}" "${newfile_sig}:${newurl_sig}")
@@ -124,7 +135,7 @@ prepare() {
     if [[ -f "$newfile" && -f "$newfile_sig" ]]; then
         echo "Reusing existing $newfile (and signature)";
     else
-        echo "Downloading Zig $newver from $newurl";
+        echo "Downloading Zig from $newurl";
         curl -Ss "$newurl" -o "$newfile";
         echo "Downloading signature...";
         curl -Ss "$newurl_sig" -o "$newfile_sig";
