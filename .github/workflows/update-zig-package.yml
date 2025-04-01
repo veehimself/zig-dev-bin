@@ -1,8 +1,8 @@
 name: Zig Package Update and Release
 on:
   schedule:
-    # Run every 3 days
-    - cron: '0 0 */3 * *'
+    # Run every 1 days
+    - cron: '0 0 */1 * *'
   workflow_dispatch:  # Allow manual triggering
 # Add permission to create releases and push to the repository
 permissions:
