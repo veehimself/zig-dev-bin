@@ -61,6 +61,12 @@ jobs:
             
             # Run makepkg as the builder user - removed --nocheck to ensure prepare() runs
             sudo -u builder bash -c 'cd /work && makepkg -f --skipinteg'
+            
+            # List all files to debug what was created
+            echo 'Files created:'
+            ls -la /work/
+            echo 'Package files:'
+            find /work -name '*.pkg.tar.*' -type f
           "
           
       - name: Delete previous release
@@ -77,12 +83,18 @@ jobs:
           name: "Zig Package (Build ${{ steps.update.outputs.build_date }})"
           tag_name: latest
           files: |
-            *.pkg.tar.zst
+            *.pkg.tar.*
           body: |
             Automated build of Zig package
             
             Build Date: ${{ steps.update.outputs.build_date }}
             Workflow Run: ${{ github.run_id }}
             Build triggered by: ${{ github.event_name }}
+            
+            ## Installation
+            Download the `.pkg.tar.zst` file and install with:
+            ```bash
+            sudo pacman -U zig-dev-bin-*.pkg.tar.zst
+            ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
