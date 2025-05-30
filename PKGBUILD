@@ -167,7 +167,8 @@ check() {
     # Right now there is no way to disable the cache (see Zig issue #12317)
     # Instead we shove everything in a local directory and delete it
     cache_dir="${srcdir}/zig-cache"
-    cd "${srcdir}/zig-linux-${CARCH}-$(original_pkgver)"
+    local zig_dir="$(find_zig_directory)"
+    cd "$zig_dir"
     echo "Running Zig Hello World"
     ./zig run --cache-dir "$cache_dir" --global-cache-dir "$cache_dir" "$hello_file"
     ./zig test --cache-dir "$cache_dir" --global-cache-dir "$cache_dir" "$hello_file"
@@ -201,17 +202,34 @@ check() {
 
 # Helper function to find the extracted Zig directory
 find_zig_directory() {
+    echo "DEBUG: Searching for Zig directory in ${srcdir}" >&2
+    echo "DEBUG: Contents of ${srcdir}:" >&2
+    ls -la "${srcdir}" >&2
+    
     # Look for directories matching the pattern zig-linux-*
     local zig_dir=$(find "${srcdir}" -maxdepth 1 -type d -name "zig-linux-*" | head -n1)
+    
     if [[ -z "$zig_dir" ]]; then
+        echo "DEBUG: No zig-linux-* directory found, looking for any zig* directory" >&2
+        zig_dir=$(find "${srcdir}" -maxdepth 1 -type d -name "zig*" | head -n1)
+    fi
+    
+    if [[ -z "$zig_dir" ]]; then
+        echo "DEBUG: No zig* directory found, listing all directories" >&2
+        find "${srcdir}" -maxdepth 1 -type d >&2
         error "Could not find extracted Zig directory in ${srcdir}"
         exit 1
     fi
+    
+    echo "DEBUG: Found Zig directory: $zig_dir" >&2
     echo "$zig_dir"
 }
 
 package() {
   local zig_dir="$(find_zig_directory)"
+  echo "DEBUG: Using Zig directory: $zig_dir" >&2
+  echo "DEBUG: Contents of Zig directory:" >&2
+  ls -la "$zig_dir" >&2
   cd "$zig_dir"
   install -d "${pkgdir}/usr/bin"
   install -d "${pkgdir}/usr/lib/zig"
