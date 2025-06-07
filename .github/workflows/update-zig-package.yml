@@ -4,9 +4,11 @@ on:
     # Run every 1 days
     - cron: '0 0 */1 * *'
   workflow_dispatch:  # Allow manual triggering
+
 # Add permission to create releases and push to the repository
 permissions:
   contents: write
+
 jobs:
   update-and-release:
     runs-on: ubuntu-latest
@@ -45,7 +47,7 @@ jobs:
           fi
           
           # Get current date for tagging
-          echo "build_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "build_date=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
         id: update
         
       - name: Build package in Docker
@@ -83,32 +85,44 @@ jobs:
           echo "All files with 'pkg' in name:"
           find . -name "*pkg*" -type f
           
-      - name: Delete previous release
-        uses: dev-drprasad/delete-tag-and-release@v0.2.1
-        with:
-          tag_name: latest
-          delete_release: true
+      - name: Delete previous release and tag
+        run: |
+          # Delete the release first
+          gh release delete latest --yes || echo "Release 'latest' not found, continuing..."
+          
+          # Delete the tag
+          git push --delete origin latest || echo "Tag 'latest' not found, continuing..."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
           
       - name: Create new release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: "Zig Package (Build ${{ steps.update.outputs.build_date }})"
-          tag_name: latest
-          files: |
-            **/*.pkg.tar.*
-          body: |
-            Automated build of Zig package
-            
-            Build Date: ${{ steps.update.outputs.build_date }}
-            Workflow Run: ${{ github.run_id }}
-            Build triggered by: ${{ github.event_name }}
-            
-            ## Installation
-            Download the `.pkg.tar.zst` file and install with:
-            ```bash
-            sudo pacman -U zig-dev-bin-*.pkg.tar.zst
-            ```
+        run: |
+          # Find the package file
+          PACKAGE_FILE=$(find . -name "*.pkg.tar.*" -type f | head -1)
+          
+          if [ -z "$PACKAGE_FILE" ]; then
+            echo "Error: No package file found!"
+            exit 1
+          fi
+          
+          echo "Found package file: $PACKAGE_FILE"
+          
+          # Create release with gh CLI (more reliable than action)
+          gh release create latest \
+            --title "Zig Package (Build ${{ steps.update.outputs.build_date }})" \
+            --notes "Automated build of Zig package
+
+          Build Date: ${{ steps.update.outputs.build_date }}
+          Workflow Run: ${{ github.run_id }}
+          Build triggered by: ${{ github.event_name }}
+
+          ## Installation
+          Download the \`.pkg.tar.zst\` file and install with:
+          \`\`\`bash
+          sudo pacman -U zig-dev-bin-*.pkg.tar.zst
+          \`\`\`" \
+            --latest \
+            "$PACKAGE_FILE"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
