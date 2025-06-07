@@ -63,11 +63,25 @@ jobs:
             sudo -u builder bash -c 'cd /work && makepkg -f --skipinteg'
             
             # List all files to debug what was created
-            echo 'Files created:'
+            echo 'Files created in /work:'
             ls -la /work/
-            echo 'Package files:'
+            echo 'Looking for package files:'
             find /work -name '*.pkg.tar.*' -type f
+            echo 'All .tar files:'
+            find /work -name '*.tar*' -type f
+            
+            # Ensure proper ownership for the GitHub runner
+            chown -R $(id -u):$(id -g) /work || true
           "
+          
+      - name: List package files for debugging
+        run: |
+          echo "Current directory contents:"
+          ls -la
+          echo "Looking for package files:"
+          find . -name "*.pkg.tar.*" -type f
+          echo "All files with 'pkg' in name:"
+          find . -name "*pkg*" -type f
           
       - name: Delete previous release
         uses: dev-drprasad/delete-tag-and-release@v0.2.1
@@ -83,7 +97,7 @@ jobs:
           name: "Zig Package (Build ${{ steps.update.outputs.build_date }})"
           tag_name: latest
           files: |
-            *.pkg.tar.*
+            **/*.pkg.tar.*
           body: |
             Automated build of Zig package
             
