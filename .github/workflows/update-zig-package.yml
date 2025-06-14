@@ -90,8 +90,11 @@ jobs:
           # Delete the release first
           gh release delete latest --yes || echo "Release 'latest' not found, continuing..."
           
-          # Delete the tag
-          git push --delete origin latest || echo "Tag 'latest' not found, continuing..."
+          # Delete remote tag
+          git push --delete origin latest || echo "Remote tag 'latest' not found, continuing..."
+          
+          # Delete local tag if it exists
+          git tag -d latest || echo "Local tag 'latest' not found, continuing..."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
@@ -107,6 +110,10 @@ jobs:
           fi
           
           echo "Found package file: $PACKAGE_FILE"
+          
+          # Create and push the tag first
+          git tag latest
+          git push origin latest
           
           # Create release with gh CLI (more reliable than action)
           gh release create latest \
