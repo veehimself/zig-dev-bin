@@ -2,7 +2,7 @@
 # Contributor: Kaizhao Zhang <zhangkaizhao@gmail.com>
 
 pkgname=zig-dev-bin
-# Old versions of zig-dev-bin used date as pkgver (pkgver=0.15.0_dev.1232.g869ef0060
+# Old versions of zig-dev-bin used date as pkgver (pkgver=0.15.0_dev.1254.gc9ce1debe
 #x86_64-0.14.0_dev.15.d4bc64038
 # Now we use something consistent with zig internal versioning.
 # Without changing the epoch, the old version scheme would be considered
@@ -10,7 +10,7 @@ pkgname=zig-dev-bin
 epoch=1
 # NOTE: Sanitize version '-' -> '_', '+' -> `.g`
 #"version": "0.14.0-dev.829+2e26cf83c",
-pkgver=0.15.0_dev.1232.g869ef0060
+pkgver=0.15.0_dev.1254.gc9ce1debe
 pkgrel=1
 pkgdesc="A general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software"
 arch=('x86_64' 'aarch64')
