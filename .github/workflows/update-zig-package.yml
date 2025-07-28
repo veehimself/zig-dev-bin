@@ -4,6 +4,9 @@ on:
     # Run every 1 days
     - cron: '0 0 */1 * *'
   workflow_dispatch:  # Allow manual triggering
+  push:
+    paths:
+      - 'PKGBUILD'  # Trigger when PKGBUILD is updated
 
 # Add permission to create releases and push to the repository
 permissions:
@@ -85,6 +88,36 @@ jobs:
           echo "All files with 'pkg' in name:"
           find . -name "*pkg*" -type f
           
+      - name: Rename package file to new format
+        run: |
+          # Find the original package file
+          ORIGINAL_FILE=$(find . -name "zig-dev-bin-*.pkg.tar.*" -type f | head -1)
+          
+          if [ -z "$ORIGINAL_FILE" ]; then
+            echo "Error: No zig-dev-bin package file found!"
+            exit 1
+          fi
+          
+          echo "Found original package file: $ORIGINAL_FILE"
+          
+          # Extract version from PKGBUILD
+          VERSION=$(grep '^pkgver=' PKGBUILD | cut -d'=' -f2)
+          PKGREL=$(grep '^pkgrel=' PKGBUILD | cut -d'=' -f2)
+          
+          # Get file extension (.pkg.tar.zst or .pkg.tar.xz)
+          EXTENSION="${ORIGINAL_FILE##*.pkg.tar.}"
+          
+          # Create new filename: zig-dev-bin-linux-VERSION-x86_64.pkg.tar.EXTENSION
+          NEW_FILENAME="zig-dev-bin-linux-${VERSION}-x86_64.pkg.tar.${EXTENSION}"
+          
+          echo "Renaming to: $NEW_FILENAME"
+          mv "$ORIGINAL_FILE" "$NEW_FILENAME"
+          
+          # Store the new filename for later steps
+          echo "package_file=$NEW_FILENAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        id: rename
+          
       - name: Delete previous release and tag
         run: |
           # Delete the release first
@@ -101,15 +134,17 @@ jobs:
           
       - name: Create new release
         run: |
-          # Find the package file
-          PACKAGE_FILE=$(find . -name "*.pkg.tar.*" -type f | head -1)
+          # Use the renamed package file from previous step
+          PACKAGE_FILE="${{ steps.rename.outputs.package_file }}"
+          VERSION="${{ steps.rename.outputs.version }}"
           
-          if [ -z "$PACKAGE_FILE" ]; then
-            echo "Error: No package file found!"
+          if [ -z "$PACKAGE_FILE" ] || [ ! -f "$PACKAGE_FILE" ]; then
+            echo "Error: Package file '$PACKAGE_FILE' not found!"
             exit 1
           fi
           
-          echo "Found package file: $PACKAGE_FILE"
+          echo "Using package file: $PACKAGE_FILE"
+          echo "Package version: $VERSION"
           
           # Create and push the tag first
           git tag latest
@@ -117,18 +152,37 @@ jobs:
           
           # Create release with gh CLI (more reliable than action)
           gh release create latest \
-            --title "Zig Package (Build ${{ steps.update.outputs.build_date }})" \
-            --notes "Automated build of Zig package
+            --title "Zig Dev Build - v$VERSION" \
+            --notes "# Zig Development Build - v$VERSION
 
-          Build Date: ${{ steps.update.outputs.build_date }}
-          Workflow Run: ${{ github.run_id }}
-          Build triggered by: ${{ github.event_name }}
+          **Build Information:**
+          - Version: \`$VERSION\`
+          - Build Date: ${{ steps.update.outputs.build_date }}
+          - Workflow Run: [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          - Build triggered by: ${{ github.event_name }}
+          - Package file: \`$PACKAGE_FILE\`
 
-          ## Installation
-          Download the \`.pkg.tar.zst\` file and install with:
+          **Installation:**
+          Download the package file and install with:
           \`\`\`bash
-          sudo pacman -U zig-dev-bin-*.pkg.tar.zst
-          \`\`\`" \
+          # Download the package
+          wget https://github.com/${{ github.repository }}/releases/download/latest/$PACKAGE_FILE
+          
+          # Install with pacman
+          sudo pacman -U $PACKAGE_FILE
+          \`\`\`
+
+          **Alternative installation:**
+          \`\`\`bash
+          # Direct install from URL
+          sudo pacman -U https://github.com/${{ github.repository }}/releases/download/latest/$PACKAGE_FILE
+          \`\`\`
+
+          **What's included:**
+          - Latest Zig development build
+          - All necessary dependencies
+          - Documentation (when available)
+          - Signature verification" \
             --latest \
             "$PACKAGE_FILE"
         env:
